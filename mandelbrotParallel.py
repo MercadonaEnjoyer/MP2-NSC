@@ -1,4 +1,7 @@
 import numpy as np
+from dask import delayed
+import dask
+from dask.distributed import Client, LocalCluster
 from numba import njit
 from multiprocessing import Pool
 import time, os, statistics, matplotlib.pyplot as plt
@@ -51,39 +54,79 @@ def mandelbrot_parallel(N, x_min, x_max, y_min, y_max, max_iter=100, n_workers=4
 
     return np.vstack(parts)
 
-if __name__ == "__main__":
-    result = mandelbrot_parallel(1024, -2.5, 1.0, -1.25, 1.25, n_workers=4)
-    fig, ax = plt.subplots(figsize=(8, 6))
-    ax.imshow(result, extent=[-2.5, 1.0, -1.25, 1.25], cmap="inferno", origin="lower", aspect="equal")
-    ax.set_xlabel("Re(c)")
-    ax.set_ylabel("Im(c)")
-    out = Path(__file__).parent / "mandelbrot.png"
-    fig.savefig(out, dpi=150)
-    print(f"Saved: {out}")
+def mandelbrot_dask(N, x_min, x_max, y_min, y_max, max_iter=100, n_chunks=32):
+    chunk_size = max(1, N // n_chunks)
+    tasks = []
+    row = 0
 
+    while row < N:
+        row_end = min(row + chunk_size, N)
+        tasks.append(
+            delayed(mandelbrot_chunk)(
+                row, row_end, N, x_min, x_max, y_min, y_max, max_iter
+            )
+        )
+        row = row_end
+
+    parts = dask.compute(*tasks)
+    return np.vstack(parts)
+
+
+if __name__ == "__main__":
     N, max_iter = 1024, 100
     X_MIN, X_MAX, Y_MIN, Y_MAX = -2.5, 1.0, -1.25, 1.25
-    # Serial baseline (Numba already warm after M1 warm-up)
+
+    p = 8  
+
+    cluster = LocalCluster(n_workers=p, threads_per_worker=1)
+    client = Client(cluster)
+
+    client.run(lambda: mandelbrot_chunk(0, 8, 8, X_MIN, X_MAX, Y_MIN, Y_MAX, 10))
+
+    n_chunks_list = list(range(1, 33))
     times = []
-    for _ in range(3):
-        t0 = time.perf_counter()
-        mandelbrot_serial(N, X_MIN, X_MAX, Y_MIN, Y_MAX, max_iter)
-        times.append(time.perf_counter() - t0)
-    t_serial = statistics.median(times)
-    for n_workers in range(1, os.cpu_count() + 1):
-        chunk_size = max(1, N // n_workers)
-        chunks, row = [], 0
-        while row < N:
-            end = min(row + chunk_size, N)
-            chunks.append((row, end, N, X_MIN, X_MAX, Y_MIN, Y_MAX, max_iter))
-            row = end
-        with Pool(processes=n_workers) as pool:
-            pool.map(_worker, chunks) # warm-up: Numba JIT in all workers
-            times = []
-            for _ in range(3):
-                t0 = time.perf_counter()
-                np.vstack(pool.map(_worker, chunks))
-                times.append(time.perf_counter() - t0)
-        t_par = statistics.median(times)
-        speedup = t_serial / t_par
-        print(f"{n_workers:2d} workers: {t_par:.3f}s, speedup={speedup:.2f}x, eff={speedup/n_workers*100:.0f}%")
+
+    for n_chunks in n_chunks_list:
+        t = []
+        for _ in range(3):
+            t0 = time.perf_counter()
+            mandelbrot_dask(
+                N, X_MIN, X_MAX, Y_MIN, Y_MAX, max_iter, n_chunks
+            )
+            t.append(time.perf_counter() - t0)
+        times.append(statistics.median(t))
+
+    T1 = times[0]
+
+    vs1x = [t / T1 for t in times]
+    speedup = [T1 / t for t in times]
+    LIF = [p * (t / T1) - 1 for t in times]  
+
+    print("\nn_chunks | time (s) | vs 1x | speedup | LIF")
+    print("-" * 55)
+    for n, t, v, s, l in zip(n_chunks_list, times, vs1x, speedup, LIF):
+        print(f"{n:8d} | {t:8.3f} | {v:6.2f} | {s:7.2f} | {l:8.3f}")
+
+    t_min = min(times)
+    idx_opt = times.index(t_min)
+    n_opt = n_chunks_list[idx_opt]
+    LIF_min = min(LIF)
+
+    print("\n--- Summary ---")
+    print(f"n_chunks optimal : {n_opt}")
+    print(f"t_min            : {t_min:.3f} s")
+    print(f"LIF_min          : {LIF_min:.3f}")
+
+    plt.figure()
+    plt.plot(n_chunks_list, times, marker='o')
+    plt.xscale("log")
+    plt.xlabel("n_chunks (log scale)")
+    plt.ylabel("Wall time (s)")
+    plt.title(f"Dask Chunk Sweep (p={p})")
+    plt.grid(True)
+
+    plt.savefig("dask chunk sweep.png", dpi=300)
+    plt.close()
+
+    client.close()
+    cluster.close()
