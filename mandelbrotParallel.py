@@ -81,53 +81,54 @@ if __name__ == "__main__":
 
     p = 8  
 
-    cluster = LocalCluster(n_workers=p, threads_per_worker=1)
-    client = Client(cluster)
+    # cluster = LocalCluster(n_workers=p, threads_per_worker=1)
+    # client = Client(cluster)
+    client = Client("tcp://10.92.0.190:8786")
 
     client.run(lambda: mandelbrot_chunk(0, 8, 8, X_MIN, X_MAX, Y_MIN, Y_MAX, 10))
 
     n_chunks_list = list(range(1, 33))
-    times = []
+    # times = []
 
-    with Pool(processes=p) as pool:
-        warmup_tasks = [(0, 8, 8, X_MIN, X_MAX, Y_MIN, Y_MAX, 10)] * p
-        pool.map(_worker, warmup_tasks)
-        for chunks in n_chunks_list:
-            t = []
-            for _ in range(3):
-                t0 = time.perf_counter()
-                result = mandelbrot_parallel(
-                    N, X_MIN, X_MAX, Y_MIN, Y_MAX,
-                    n_chunks=chunks,
-                    max_iter=max_iter,
-                    pool=pool
-                )
-                t.append(time.perf_counter() - t0)
-            times.append(statistics.median(t))
+    # with Pool(processes=p) as pool:
+    #     warmup_tasks = [(0, 8, 8, X_MIN, X_MAX, Y_MIN, Y_MAX, 10)] * p
+    #     pool.map(_worker, warmup_tasks)
+    #     for chunks in n_chunks_list:
+    #         t = []
+    #         for _ in range(3):
+    #             t0 = time.perf_counter()
+    #             result = mandelbrot_parallel(
+    #                 N, X_MIN, X_MAX, Y_MIN, Y_MAX,
+    #                 n_chunks=chunks,
+    #                 max_iter=max_iter,
+    #                 pool=pool
+    #             )
+    #             t.append(time.perf_counter() - t0)
+    #         times.append(statistics.median(t))
 
-    T1 = times[0]
+    # T1 = times[0]
 
-    vs1x = [t / T1 for t in times]
-    speedup = [T1 / t for t in times]
-    LIF = [p * (t / T1) - 1 for t in times]  
+    # vs1x = [t / T1 for t in times]
+    # speedup = [T1 / t for t in times]
+    # LIF = [p * (t / T1) - 1 for t in times]  
 
-    print("\nn_chunks | time (s) | vs 1x | speedup | LIF")
-    print("-" * 55)
-    for n, t, v, s, l in zip(n_chunks_list, times, vs1x, speedup, LIF):
-        print(f"{n:8d} | {t:8.3f} | {v:6.2f} | {s:7.2f} | {l:8.3f}")
+    # print("\nn_chunks | time (s) | vs 1x | speedup | LIF")
+    # print("-" * 55)
+    # for n, t, v, s, l in zip(n_chunks_list, times, vs1x, speedup, LIF):
+    #     print(f"{n:8d} | {t:8.3f} | {v:6.2f} | {s:7.2f} | {l:8.3f}")
 
-    t_min = min(times)
-    idx_opt = times.index(t_min)
-    n_opt = n_chunks_list[idx_opt]
-    LIF_min = min(LIF)
+    # t_min = min(times)
+    # idx_opt = times.index(t_min)
+    # n_opt = n_chunks_list[idx_opt]
+    # LIF_min = min(LIF)
 
-    print("\n--- Summary ---")
-    print(f"n_chunks optimal : {n_opt}")
-    print(f"t_min            : {t_min:.3f} s")
-    print(f"LIF_min          : {LIF_min:.3f}")
+    # print("\n--- Summary ---")
+    # print(f"n_chunks optimal : {n_opt}")
+    # print(f"t_min            : {t_min:.3f} s")
+    # print(f"LIF_min          : {LIF_min:.3f}")
 
-    warmup_tasks = [delayed(mandelbrot_chunk)(0, 8, 8, X_MIN, X_MAX, Y_MIN, Y_MAX, 10) for _ in range(p)]
-    dask.compute(*warmup_tasks)
+    # warmup_tasks = [delayed(mandelbrot_chunk)(0, 8, 8, X_MIN, X_MAX, Y_MIN, Y_MAX, 10) for _ in range(p)]
+    # dask.compute(*warmup_tasks)
         
     times = []
 
@@ -162,16 +163,16 @@ if __name__ == "__main__":
     print(f"t_min            : {t_min:.3f} s")
     print(f"LIF_min          : {LIF_min:.3f}")
 
-    plt.figure()
-    plt.plot(n_chunks_list, times, marker='o')
-    plt.xscale("log")
-    plt.xlabel("n_chunks (log scale)")
-    plt.ylabel("Wall time (s)")
-    plt.title(f"Dask Chunk Sweep (p={p})")
-    plt.grid(True)
+    # plt.figure()
+    # plt.plot(n_chunks_list, times, marker='o')
+    # plt.xscale("log")
+    # plt.xlabel("n_chunks (log scale)")
+    # plt.ylabel("Wall time (s)")
+    # plt.title(f"Dask Chunk Sweep (p={p})")
+    # plt.grid(True)
 
-    plt.savefig("dask_chunk_sweep.png", dpi=300)
-    plt.close()
+    # plt.savefig("dask_chunk_sweep.png", dpi=300)
+    # plt.close()
 
     client.close()
-    cluster.close()
+    # cluster.close()
