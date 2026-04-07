@@ -57,20 +57,13 @@ def mandelbrot_parallel(N, x_min, x_max, y_min, y_max, max_iter=100, n_workers=4
         parts = p.map(_worker, chunks)
     return np.vstack(parts)
 
-def mandelbrot_dask(N, x_min, x_max, y_min, y_max, max_iter=100, n_chunks=32):
+def mandelbrot_dask(N, x_min, x_max, y_min, y_max, max_iter=100, n_chunks=12):
     chunk_size = max(1, N // n_chunks)
-    tasks = []
-    row = 0
-
+    tasks, row = [], 0
     while row < N:
         row_end = min(row + chunk_size, N)
-        tasks.append(
-            delayed(mandelbrot_chunk)(
-                row, row_end, N, x_min, x_max, y_min, y_max, max_iter
-            )
-        )
+        tasks.append(delayed(mandelbrot_chunk)(row, row_end, N, x_min, x_max, y_min, y_max, max_iter))
         row = row_end
-
     parts = dask.compute(*tasks)
     return np.vstack(parts)
 
@@ -89,54 +82,58 @@ if __name__ == "__main__":
     n_chunks_list = list(range(1, 33))
     times = []
 
-    with Pool(processes=p) as pool:
-        result = mandelbrot_parallel(
-            N, X_MIN, X_MAX, Y_MIN, Y_MAX,
-            max_iter=max_iter,
-            pool=pool
-        )
+    # with Pool(processes=p) as pool:
+    #     result = mandelbrot_parallel(
+    #         N, X_MIN, X_MAX, Y_MIN, Y_MAX,
+    #         max_iter=max_iter,
+    #         pool=pool
+    #     )
 
-    for n_chunks in n_chunks_list:
-        t = []
-        for _ in range(3):
-            t0 = time.perf_counter()
-            mandelbrot_dask(
-                N, X_MIN, X_MAX, Y_MIN, Y_MAX, max_iter, n_chunks
-            )
-            t.append(time.perf_counter() - t0)
-        times.append(statistics.median(t))
+    # for n_chunks in n_chunks_list:
+    #     t = []
+    #     for _ in range(3):
+    #         t0 = time.perf_counter()
+    #         mandelbrot_dask(
+    #             N, X_MIN, X_MAX, Y_MIN, Y_MAX, max_iter, n_chunks
+    #         )
+    #         t.append(time.perf_counter() - t0)
+    #     times.append(statistics.median(t))
 
-    T1 = times[0]
+    # T1 = times[0]
 
-    vs1x = [t / T1 for t in times]
-    speedup = [T1 / t for t in times]
-    LIF = [p * (t / T1) - 1 for t in times]  
+    # vs1x = [t / T1 for t in times]
+    # speedup = [T1 / t for t in times]
+    # LIF = [p * (t / T1) - 1 for t in times]  
 
-    print("\nn_chunks | time (s) | vs 1x | speedup | LIF")
-    print("-" * 55)
-    for n, t, v, s, l in zip(n_chunks_list, times, vs1x, speedup, LIF):
-        print(f"{n:8d} | {t:8.3f} | {v:6.2f} | {s:7.2f} | {l:8.3f}")
+    # print("\nn_chunks | time (s) | vs 1x | speedup | LIF")
+    # print("-" * 55)
+    # for n, t, v, s, l in zip(n_chunks_list, times, vs1x, speedup, LIF):
+    #     print(f"{n:8d} | {t:8.3f} | {v:6.2f} | {s:7.2f} | {l:8.3f}")
 
-    t_min = min(times)
-    idx_opt = times.index(t_min)
-    n_opt = n_chunks_list[idx_opt]
-    LIF_min = min(LIF)
+    # t_min = min(times)
+    # idx_opt = times.index(t_min)
+    # n_opt = n_chunks_list[idx_opt]
+    # LIF_min = min(LIF)
 
-    print("\n--- Summary ---")
-    print(f"n_chunks optimal : {n_opt}")
-    print(f"t_min            : {t_min:.3f} s")
-    print(f"LIF_min          : {LIF_min:.3f}")
+    # print("\n--- Summary ---")
+    # print(f"n_chunks optimal : {n_opt}")
+    # print(f"t_min            : {t_min:.3f} s")
+    # print(f"LIF_min          : {LIF_min:.3f}")
 
-    plt.figure()
-    plt.plot(n_chunks_list, times, marker='o')
-    plt.xscale("log")
-    plt.xlabel("n_chunks (log scale)")
-    plt.ylabel("Wall time (s)")
-    plt.title(f"Dask Chunk Sweep (p={p})")
-    plt.grid(True)
+    # plt.figure()
+    # plt.plot(n_chunks_list, times, marker='o')
+    # plt.xscale("log")
+    # plt.xlabel("n_chunks (log scale)")
+    # plt.ylabel("Wall time (s)")
+    # plt.title(f"Dask Chunk Sweep (p={p})")
+    # plt.grid(True)
 
-    plt.savefig("dask chunk sweep.png", dpi=300)
-    plt.close()
-
+    # plt.savefig("dask chunk sweep.png", dpi=300)
+    # plt.close()
+    for _ in range(3): 
+        t0 = time.perf_counter()
+        result = mandelbrot_dask(1024, X_MIN, X_MAX, Y_MIN, Y_MAX, max_iter)
+        times.append(time.perf_counter() - t0)
+    print(f"Dask local(n_chunks=12):{statistics.median(times):.3f}s")
     client.close()
     cluster.close()
